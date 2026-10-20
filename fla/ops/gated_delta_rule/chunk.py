@@ -123,6 +123,7 @@ def chunk_gated_delta_rule_fwd(
     return g, o, A, final_state, initial_state, g_input
 
 
+@dispatch('gated_delta_rule')
 def chunk_gated_delta_rule_bwd(
     q: torch.Tensor,
     k: torch.Tensor,

@@ -7,7 +7,8 @@
 
 """GDR backends."""
 
+from fla.ops.gated_delta_rule.backends.ascend import AscendCGDNBackend
 from fla.ops.gated_delta_rule.backends.flash_qla import FlashQLABackend
 from fla.ops.gated_delta_rule.backends.triton_ascend import TritonAscendGDNBackend
 
-__all__ = ['FlashQLABackend', 'TritonAscendGDNBackend']
+__all__ = ['AscendCGDNBackend', 'FlashQLABackend', 'TritonAscendGDNBackend']

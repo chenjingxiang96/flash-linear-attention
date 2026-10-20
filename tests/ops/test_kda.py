@@ -1449,11 +1449,13 @@ def _run_fused_recurrent_kda_fwd():
 
 
 @pytest.mark.skipif(not IS_NPU, reason='Triton-Ascend KDA backend routing is only exercised on NPU')
-def test_triton_ascend_backend_routing():
+def test_triton_ascend_backend_routing(monkeypatch):
     """Verify KDA operations dispatch to Triton-Ascend on NPU.
 
     Numerical parity can pass through the fallback, so record which implementations actually run.
     """
+    for flag in ('FLA_ASCENDC', 'FLA_KDA_ASCENDC', 'FLA_KDA_ASCENDC_OPS'):
+        monkeypatch.setenv(flag, '0')
     backend, calls = _spy_on_triton_ascend_kda_backend()
     try:
         # safe_gate=True: forward and backward must hit the NPU kernels

@@ -7,8 +7,9 @@
 
 """Common backends for shared operations like chunk_gated_delta_rule_fwd_h."""
 
+from fla.ops.common.backends.ascend import AscendCCommonBackend
 from fla.ops.common.backends.intracard import IntraCardCPBackend
 from fla.ops.common.backends.tilelang import CommonTileLangBackend
 from fla.ops.common.backends.triton_ascend import TritonAscendCommonBackend
 
-__all__ = ['CommonTileLangBackend', 'IntraCardCPBackend', 'TritonAscendCommonBackend']
+__all__ = ['AscendCCommonBackend', 'CommonTileLangBackend', 'IntraCardCPBackend', 'TritonAscendCommonBackend']

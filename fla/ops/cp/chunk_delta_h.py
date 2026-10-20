@@ -15,6 +15,7 @@ import torch.distributed as dist
 import triton
 import triton.language as tl
 
+from fla.backends import dispatch
 from fla.ops.cp.comm import all_gather_into_tensor
 from fla.ops.utils.op import exp2
 from fla.utils import IS_TF32_SUPPORTED, autotune_cache_kwargs, check_shared_mem
@@ -760,6 +761,21 @@ def pre_process_bwd_kernel_merged(
         tl.store(p_m, b_m.to(p_m.dtype.element_ty), mask=(row < K)[:, None] & (col < K)[None, :])
 
 
+@dispatch('cp')
+def _pre_process_fwd(grid, use_graph=False, **kwargs):
+    pre_process_fwd_kernel_merged[grid](**kwargs)
+
+
+@dispatch('cp')
+def _pre_process_bwd(grid, use_graph=False, **kwargs):
+    pre_process_bwd_kernel_merged[grid](**kwargs)
+
+
+@dispatch('cp')
+def _merge_states(grid, use_graph=False, **kwargs):
+    merge_fwd_bwd_kernel[grid](**kwargs)
+
+
 def chunk_gated_delta_rule_fwd_h_pre_process(
     k: torch.Tensor,
     w: torch.Tensor,
@@ -812,7 +828,9 @@ def chunk_gated_delta_rule_fwd_h_pre_process(
         for part, (cu_win, is_last) in enumerate(zip(
                 (cu_seqlens[fns - 1: fns + 1], cu_seqlens[-2:]), context.is_last_by_part)):
             if not is_last:
-                pre_process_fwd_kernel_merged[grid_hm](
+                _pre_process_fwd(
+                    grid=grid_hm,
+                    use_graph=use_graph,
                     k=k,
                     v=u if v is None else v,
                     w=w,
@@ -844,7 +862,9 @@ def chunk_gated_delta_rule_fwd_h_pre_process(
         def grid(meta): return (triton.cdiv(V, meta['BV']), HV)
         for part in range(2):
             if not context.is_first_by_part[part]:
-                merge_fwd_bwd_kernel[grid](
+                _merge_states(
+                    grid=grid,
+                    use_graph=use_graph,
                     h=initial_state[0] if part == 0 else initial_state[fns],
                     ag_hm=slots,
                     pre_or_post_num_ranks=context.pre_num_ranks_by_part[part],
@@ -889,7 +909,9 @@ def chunk_gated_delta_rule_fwd_h_pre_process(
         grid = (triton.cdiv(V, BLOCK_SIZE) + triton.cdiv(K, BLOCK_SIZE), HV)
         # For DPLR, v provides the original v for computing h contributions,
         # while u remains the WY-processed values (A_ab @ A_ak @ v) for v_new = w @ h + u.
-        pre_process_fwd_kernel_merged[grid](
+        _pre_process_fwd(
+            grid=grid,
+            use_graph=use_graph,
             k=k,
             v=u if v is None else v,
             w=w,
@@ -917,7 +939,9 @@ def chunk_gated_delta_rule_fwd_h_pre_process(
     # a zero num_ranks merge just re-stores the zeros initial_state[0] already holds
     if use_graph or not context.is_first_rank:
         def grid(meta): return (triton.cdiv(V, meta['BV']), HV)
-        merge_fwd_bwd_kernel[grid](
+        _merge_states(
+            grid=grid,
+            use_graph=use_graph,
             h=initial_state[0],
             ag_hm=ag_hm,
             pre_or_post_num_ranks=context.pre_num_ranks_dev if use_graph else context.pre_num_ranks,
@@ -999,7 +1023,9 @@ def chunk_gated_delta_rule_bwd_dhu_pre_process(
         for part, (cu_win, is_first) in enumerate(zip(
                 (cu_seqlens[:2], cu_seqlens[fns: fns + 2]), context.is_first_by_part)):
             if not is_first:
-                pre_process_bwd_kernel_merged[grid_hm](
+                _pre_process_bwd(
+                    grid=grid_hm,
+                    use_graph=use_graph,
                     q=q,
                     k=k if bg is None else bg,
                     w=w,
@@ -1032,7 +1058,9 @@ def chunk_gated_delta_rule_bwd_dhu_pre_process(
         def grid(meta): return (triton.cdiv(V, meta['BV']), HV)
         for part in range(2):
             if not context.is_last_by_part[part]:
-                merge_fwd_bwd_kernel[grid](
+                _merge_states(
+                    grid=grid,
+                    use_graph=use_graph,
                     h=dht[fns - 1] if part == 0 else dht[-1],
                     ag_hm=slots,
                     pre_or_post_num_ranks=context.post_num_ranks_by_part[part],
@@ -1069,7 +1097,9 @@ def chunk_gated_delta_rule_bwd_dhu_pre_process(
     if use_graph or not context.is_first_rank:
         BLOCK_SIZE = 32 if K <= 64 else 64
         grid = (triton.cdiv(V, BLOCK_SIZE) + triton.cdiv(K, BLOCK_SIZE), HV)
-        pre_process_bwd_kernel_merged[grid](
+        _pre_process_bwd(
+            grid=grid,
+            use_graph=use_graph,
             q=q,
             k=k if bg is None else bg,
             w=w,
@@ -1109,7 +1139,9 @@ def chunk_gated_delta_rule_bwd_dhu_pre_process(
             h = dht
 
         def grid(meta): return (triton.cdiv(V, meta['BV']), HV)
-        merge_fwd_bwd_kernel[grid](
+        _merge_states(
+            grid=grid,
+            use_graph=use_graph,
             h=h,
             ag_hm=ag_dhm,
             pre_or_post_num_ranks=context.post_num_ranks_dev if use_graph else context.post_num_ranks,

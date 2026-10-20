@@ -7,6 +7,7 @@
 
 """GLA backends."""
 
+from fla.ops.gla.backends.ascend import AscendCGLABackend
 from fla.ops.gla.backends.triton_ascend import TritonAscendGLABackend
 
-__all__ = ['TritonAscendGLABackend']
+__all__ = ['AscendCGLABackend', 'TritonAscendGLABackend']

@@ -458,6 +458,7 @@ def chunk_kda_bwd_wy_dqkg_fused(
     return dq, dk, dv, db, dg, dA
 
 
+@dispatch('kda')
 def chunk_kda_bwd(
     q: torch.Tensor,
     k: torch.Tensor,
